@@ -1,0 +1,154 @@
+1. laravel install
+------------------------------------------------------------------------------------------------------------
+composer create-project laravel/laravel example-app
+------------------------------------------------------------------------------------------------------------
+
+2. install Laravel Breeze
+------------------------------------------------------------------------------------------------------------
+composer require laravel/breeze --dev
+php artisan breeze:install
+------------------------------------------------------------------------------------------------------------
+
+4. Edite Migration File
+database\migrations\0001_01_01_000000_create_users_table.php -----------------------------------------------
+$table->enum('roles', ['admin', 'author', 'editor', 'user'])->default('user');
+------------------------------------------------------------------------------------------------------------
+
+5. refresh database
+------------------------------------------------------------------------------------------------------------
+php artisan migrate:refresh
+------------------------------------------------------------------------------------------------------------
+
+6. make middleware
+CMD --------------------------------------------------------------------------------------------------------
+php artisan make:middleware AdminCheck
+php artisan make:middleware AuthorCheck
+php artisan make:middleware EditorCheck
+app\Http\Middleware\AdminCheck.php --------------------------------------------------------------------------
+public function handle(Request $request, Closure $next): Response{
+	if (auth()->user()->roles === 'admin') {
+		return $next($request);
+	}
+	return redirect('/');
+}
+app\Http\Middleware\AuthorCheck.php --------------------------------------------------------------------------
+public function handle(Request $request, Closure $next): Response{
+	if (auth()->user()->roles === 'author') {
+		return $next($request);
+	}
+	return redirect('/');
+}
+app\Http\Middleware\EditorCheck.php --------------------------------------------------------------------------
+public function handle(Request $request, Closure $next): Response{
+	if (auth()->user()->roles === 'editor') {
+		return $next($request);
+	}
+	return redirect('/');
+}
+bootstrap\app.php ------------------------------------------------------------------------------------------
+use App\Http\Middleware\AdminCheck;
+use App\Http\Middleware\AuthorCheck;
+use App\Http\Middleware\EditorCheck;
+
+return Application::configure(basePath: dirname(__DIR__))
+->withMiddleware(function (Middleware $middleware) {
+	$middleware->alias(
+		[
+			'admin' => AdminCheck::class,
+			'author' => AuthorCheck::class,
+			'editor' => EditorCheck::class,
+		]
+	);
+})
+------------------------------------------------------------------------------------------------------------
+
+7. make controller
+CMD --------------------------------------------------------------------------------------------------------
+php artisan make:controller AdminController
+php artisan make:controller AuthorController
+php artisan make:controller EditorController
+app\Http\Controllers\AdminController.php -------------------------------------------------------------------
+public function index()
+{
+	return view('admin.index');
+}
+app\Http\Controllers\AuthorController.php -------------------------------------------------------------------
+public function index()
+{
+	return view('author.index');
+}
+app\Http\Controllers\EditorController.php -------------------------------------------------------------------
+public function index()
+{
+	return view('editor.index');
+}
+routes\web.php ---------------------------------------------------------------------------------------------
+use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AuthorController;
+use App\Http\Controllers\EditorController;
+
+Route::middleware('admin')->group(function () {
+    Route::get('/admin/dashboard', [AdminController::class, 'index'])->name('admin.dashboard');
+});
+
+Route::middleware('author')->group(function () {
+    Route::get('/author/dashboard', [AuthorController::class, 'index'])->name('author.dashboard');
+});
+
+Route::middleware('editor')->group(function () {
+    Route::get('/editor/dashboard', [EditorController::class, 'index'])->name('editor.dashboard');
+});
+------------------------------------------------------------------------------------------------------------
+
+8. Auth setup
+app\Http\Controllers\Auth\AuthenticatedSessionController.php -----------------------------------------------
+public function store(LoginRequest $request): RedirectResponse
+{
+	$request->authenticate();
+
+	$request->session()->regenerate();
+
+	$role = Auth::user()->roles;
+	if($role == 'admin'){
+		return redirect()->intended(route('admin.dashboard', absolute: false));
+	}
+	if($role == 'author'){
+		return redirect()->intended(route('author.dashboard', absolute: false));
+	}
+	if($role == 'editor'){
+		return redirect()->intended(route('editor.dashboard', absolute: false));
+	} 
+	return redirect()->intended(route('home', absolute: false));
+}
+app\Http\Controllers\Auth\RegisteredUserController.php -----------------------------------------------------
+public function store(Request $request): RedirectResponse
+{
+	$request->validate([
+		'name' => ['required', 'string', 'max:255'],
+		'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
+		'password' => ['required', 'confirmed', Rules\Password::defaults()],
+	]);
+
+	$user = User::create([
+		'name' => $request->name,
+		'email' => $request->email,
+		'password' => Hash::make($request->password),
+	]);
+
+	event(new Registered($user));
+
+	Auth::login($user);
+
+	$role = Auth::user()->roles;
+	if($role == 'admin'){
+		return redirect()->intended(route('admin.dashboard', absolute: false));
+	}
+	if($role == 'author'){
+		return redirect()->intended(route('author.dashboard', absolute: false));
+	}
+	if($role == 'editor'){
+		return redirect()->intended(route('editor.dashboard', absolute: false));
+	} 
+	return redirect()->intended(route('home', absolute: false));
+}
+------------------------------------------------------------------------------------------------------------
